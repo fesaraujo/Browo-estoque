@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>BROWO Estoque</title>
-<script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   :root {
@@ -176,9 +176,8 @@
         <span class="scan-btn-sub">Aponte para o código de barras da etiqueta</span>
       </button>
       <div class="video-container" id="video-entrada">
-        <video id="video-el-entrada" playsinline></video>
         <div class="video-overlay"><div class="scan-frame"></div></div>
-        <button class="video-close" onclick="stopScan('entrada')">✕</button>
+        <button class="video-close" onclick="stopScan('entrada')" style="position:absolute;top:10px;right:10px;z-index:10;">✕</button>
       </div>
     </div>
 
@@ -236,9 +235,8 @@
         <span class="scan-btn-sub">Aponte para o código de barras da peça vendida</span>
       </button>
       <div class="video-container" id="video-saida">
-        <video id="video-el-saida" playsinline></video>
         <div class="video-overlay"><div class="scan-frame"></div></div>
-        <button class="video-close" onclick="stopScan('saida')">✕</button>
+        <button class="video-close" onclick="stopScan('saida')" style="position:absolute;top:10px;right:10px;z-index:10;">✕</button>
       </div>
     </div>
 
@@ -356,46 +354,64 @@ function saveConfig() {
 }
 
 // ── Scanner de código de barras ───────────────────────────────────────────────
+let html5QrScanners = {};
+
 async function startScan(tab) {
   const videoContainer = document.getElementById('video-' + tab);
-  const videoEl = document.getElementById('video-el-' + tab);
   videoContainer.classList.add('show');
-  document.getElementById('scan-btn-' + tab) && (document.getElementById('scan-btn-' + tab).style.display = 'none');
+  if (document.getElementById('scan-btn-' + tab)) {
+    document.getElementById('scan-btn-' + tab).style.display = 'none';
+  }
+
+  // Cria div dedicado para o scanner se não existir
+  let scanDiv = document.getElementById('scan-div-' + tab);
+  if (!scanDiv) {
+    scanDiv = document.createElement('div');
+    scanDiv.id = 'scan-div-' + tab;
+    scanDiv.style.width = '100%';
+    scanDiv.style.height = '100%';
+    videoContainer.insertBefore(scanDiv, videoContainer.querySelector('.video-overlay'));
+  }
+
+  // Para scanner anterior se existir
+  if (html5QrScanners[tab]) {
+    try { await html5QrScanners[tab].stop(); } catch(e) {}
+  }
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    videoEl.srcObject = stream;
-    videoEl.play();
+    const scanner = new Html5Qrcode('scan-div-' + tab);
+    html5QrScanners[tab] = scanner;
 
-    if (window.ZXing) {
-      codeReader = new ZXing.BrowserMultiFormatReader();
-      codeReader.decodeFromVideoElement(videoEl, (result, err) => {
-        if (result) {
-          stopScan(tab);
-          const sku = result.getText();
-          document.getElementById('sku-' + tab).value = sku;
-          buscarSku(tab);
-        }
-      });
-    }
+    await scanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 220, height: 120 } },
+      (decodedText) => {
+        // Leitura bem sucedida!
+        stopScan(tab);
+        // Extrai só os dígitos numéricos se o código tiver outros caracteres
+        const sku = decodedText.replace(/[^a-zA-Z0-9]/g, '').trim();
+        document.getElementById('sku-' + tab).value = sku;
+        showToast('Código lido: ' + sku);
+        buscarSku(tab);
+      },
+      (error) => { /* ignora erros de frame */ }
+    );
   } catch (err) {
     showToast('Câmera não disponível. Use a digitação manual.', true);
     stopScan(tab);
   }
 }
 
-function stopScan(tab) {
+async function stopScan(tab) {
   const videoContainer = document.getElementById('video-' + tab);
-  const videoEl = document.getElementById('video-el-' + tab);
   videoContainer.classList.remove('show');
   if (document.getElementById('scan-btn-' + tab)) {
     document.getElementById('scan-btn-' + tab).style.display = '';
   }
-  if (videoEl.srcObject) {
-    videoEl.srcObject.getTracks().forEach(t => t.stop());
-    videoEl.srcObject = null;
+  if (html5QrScanners[tab]) {
+    try { await html5QrScanners[tab].stop(); } catch(e) {}
+    html5QrScanners[tab] = null;
   }
-  if (codeReader) { try { codeReader.reset(); } catch(e) {} }
 }
 
 // ── Busca de SKU ──────────────────────────────────────────────────────────────
