@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>BROWO Estoque</title>
+<script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --bg: #f5f5f3;
+    --surface: #ffffff;
+    --border: #e5e5e2;
+    --border-strong: #d0d0cc;
+    --text: #1a1a18;
+    --text-secondary: #6b6b68;
+    --text-muted: #a0a09d;
+    --accent: #1a1a18;
+    --accent-light: #f0f0ee;
+    --success: #15803d;
+    --success-bg: #f0fdf4;
+    --success-border: #bbf7d0;
+    --warning: #b45309;
+    --warning-bg: #fffbeb;
+    --warning-border: #fde68a;
+    --danger: #dc2626;
+    --danger-bg: #fef2f2;
+    --danger-border: #fecaca;
+    --radius: 10px;
+  }
+  body { background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; color: var(--text); min-height: 100vh; }
+  .app { max-width: 430px; margin: 0 auto; padding: 0 0 80px; }
+
+  /* Header */
+  .header { background: var(--surface); border-bottom: 0.5px solid var(--border); padding: 16px 20px 12px; position: sticky; top: 0; z-index: 10; }
+  .header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .logo { font-size: 17px; font-weight: 600; letter-spacing: -0.5px; }
+  .logo span { opacity: 0.4; }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; display: inline-block; margin-right: 5px; }
+  .status-text { font-size: 11px; color: var(--text-muted); }
+  .tab-bar { display: flex; background: var(--bg); border-radius: 8px; padding: 2px; }
+  .tab { flex: 1; padding: 7px; text-align: center; font-size: 13px; font-weight: 500; border-radius: 6px; cursor: pointer; color: var(--text-secondary); border: none; background: transparent; transition: all 0.15s; }
+  .tab.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+  /* Scanner */
+  .section { padding: 16px 16px 0; }
+  .label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .scan-btn { width: 100%; padding: 20px; background: var(--surface); border: 1.5px dashed var(--border-strong); border-radius: var(--radius); display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; transition: all 0.15s; }
+  .scan-btn:active { background: var(--accent-light); border-color: var(--accent); }
+  .scan-btn svg { width: 36px; height: 36px; color: var(--text-muted); }
+  .scan-btn-label { font-size: 14px; color: var(--text-secondary); font-weight: 500; }
+  .scan-btn-sub { font-size: 12px; color: var(--text-muted); }
+  .video-container { display: none; position: relative; border-radius: var(--radius); overflow: hidden; background: #000; aspect-ratio: 1; }
+  .video-container.show { display: block; }
+  .video-container video { width: 100%; height: 100%; object-fit: cover; }
+  .video-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .scan-frame { width: 60%; aspect-ratio: 1; border: 2px solid #fff; border-radius: 8px; opacity: 0.8; }
+  .video-close { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.5); border: none; color: #fff; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; }
+
+  /* Divider */
+  .divider { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
+  .div-line { flex: 1; height: 0.5px; background: var(--border); }
+  .div-text { font-size: 11px; color: var(--text-muted); }
+
+  /* Manual input */
+  .input-row { padding: 0 16px; display: flex; gap: 8px; }
+  .sku-input { flex: 1; height: 44px; padding: 0 14px; border: 0.5px solid var(--border-strong); border-radius: var(--radius); font-size: 16px; background: var(--surface); color: var(--text); outline: none; -webkit-appearance: none; }
+  .sku-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(26,26,24,0.06); }
+  .search-btn { height: 44px; padding: 0 18px; border-radius: var(--radius); border: none; background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .search-btn:active { opacity: 0.8; }
+
+  /* Loading */
+  .loading { display: none; text-align: center; padding: 24px; color: var(--text-muted); font-size: 14px; }
+  .loading.show { display: block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; display: inline-block; margin-right: 8px; vertical-align: middle; }
+
+  /* Result card */
+  .result-card { display: none; margin: 12px 16px 0; background: var(--surface); border: 0.5px solid var(--border); border-radius: 14px; overflow: hidden; }
+  .result-card.show { display: block; }
+  .result-header { padding: 14px 16px 12px; border-bottom: 0.5px solid var(--border); }
+  .result-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
+  .result-sku { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+  .badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+  .badge-new { background: var(--success-bg); color: var(--success); border: 0.5px solid var(--success-border); }
+  .badge-exists { background: var(--warning-bg); color: var(--warning); border: 0.5px solid var(--warning-border); }
+  .badge-danger { background: var(--danger-bg); color: var(--danger); border: 0.5px solid var(--danger-border); }
+  .result-name { font-size: 13px; color: var(--text-secondary); }
+  .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); }
+  .result-field { background: var(--surface); padding: 10px 14px; }
+  .result-field-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px; }
+  .result-field-value { font-size: 15px; font-weight: 600; }
+  .result-actions { padding: 12px 14px; }
+  .warning-box { background: var(--warning-bg); border: 0.5px solid var(--warning-border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; font-size: 13px; color: var(--warning); line-height: 1.4; }
+  .qty-row { display: flex; align-items: center; margin-bottom: 10px; }
+  .qty-label { flex: 1; font-size: 14px; color: var(--text-secondary); }
+  .qty-ctrl { display: flex; align-items: center; gap: 6px; }
+  .qty-btn { width: 32px; height: 32px; border-radius: 8px; border: 0.5px solid var(--border-strong); background: var(--bg); font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text); }
+  .qty-val { font-size: 17px; font-weight: 600; min-width: 28px; text-align: center; }
+  .btn-row { display: flex; gap: 8px; }
+  .btn-main { flex: 1; height: 46px; border-radius: var(--radius); border: none; background: var(--accent); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .btn-main:active { opacity: 0.8; }
+  .btn-main.danger { background: var(--danger); }
+  .btn-cancel { height: 46px; padding: 0 16px; border-radius: var(--radius); border: 0.5px solid var(--border-strong); background: transparent; color: var(--text); font-size: 14px; cursor: pointer; }
+  .btn-cancel:active { background: var(--bg); }
+  .sheet-info { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border-top: 0.5px solid var(--border); font-size: 11px; color: var(--text-muted); }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--text); color: #fff; padding: 12px 20px; border-radius: 20px; font-size: 14px; font-weight: 500; white-space: nowrap; z-index: 100; transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1); pointer-events: none; }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.error { background: var(--danger); }
+
+  /* Config screen */
+  .config-screen { display: none; padding: 16px; }
+  .config-screen.show { display: block; }
+  .config-card { background: var(--surface); border: 0.5px solid var(--border); border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+  .config-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .config-desc { font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.5; }
+  .config-input { width: 100%; height: 44px; padding: 0 12px; border: 0.5px solid var(--border-strong); border-radius: var(--radius); font-size: 13px; background: var(--bg); color: var(--text); outline: none; font-family: monospace; }
+  .config-input:focus { border-color: var(--accent); }
+  .save-config-btn { width: 100%; height: 46px; background: var(--accent); color: #fff; border: none; border-radius: var(--radius); font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+
+  /* Config icon */
+  .config-icon-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 4px; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="header">
+    <div class="header-top">
+      <span class="logo">BROWO <span>estoque</span></span>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span><span class="status-dot" id="status-dot"></span><span class="status-text" id="status-text">Verificando...</span></span>
+        <button class="config-icon-btn" onclick="toggleConfig()" aria-label="Configurações">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="tab-bar">
+      <button class="tab active" id="tab-entrada" onclick="setTab('entrada')">📦 Entrada</button>
+      <button class="tab" id="tab-saida" onclick="setTab('saida')">🏷️ Saída</button>
+    </div>
+  </div>
+
+  <!-- Config Screen -->
+  <div class="config-screen" id="config-screen">
+    <div class="config-card">
+      <div class="config-title">URL do Apps Script</div>
+      <div class="config-desc">Cole aqui a URL gerada ao publicar o script como Web App no Google Sheets.</div>
+      <input type="url" class="config-input" id="script-url-input" placeholder="https://script.google.com/macros/s/..." value="">
+      <button class="save-config-btn" onclick="saveConfig()">Salvar e conectar</button>
+    </div>
+    <div class="config-card" style="background:var(--warning-bg);border-color:var(--warning-border);">
+      <div class="config-title" style="color:var(--warning);">Como obter a URL</div>
+      <div class="config-desc" style="color:var(--warning);">
+        1. Abra o Google Sheets com o estoque<br>
+        2. Extensions → Apps Script<br>
+        3. Cole o código do arquivo Code.gs<br>
+        4. Deploy → New deployment → Web app<br>
+        5. Copie a URL gerada e cole acima
+      </div>
+    </div>
+  </div>
+
+  <!-- Entrada Tab -->
+  <div id="view-entrada">
+    <div class="section" style="margin-top:14px;">
+      <div class="label">Escanear etiqueta</div>
+      <button class="scan-btn" onclick="startScan('entrada')" id="scan-btn-entrada">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3m0 4h4v-4m-4 0h-3v4"/></svg>
+        <span class="scan-btn-label">Ativar câmera</span>
+        <span class="scan-btn-sub">Aponte para o código de barras da etiqueta</span>
+      </button>
+      <div class="video-container" id="video-entrada">
+        <video id="video-el-entrada" playsinline></video>
+        <div class="video-overlay"><div class="scan-frame"></div></div>
+        <button class="video-close" onclick="stopScan('entrada')">✕</button>
+      </div>
+    </div>
+
+    <div class="divider"><div class="div-line"></div><span class="div-text">ou digite o código</span><div class="div-line"></div></div>
+
+    <div class="input-row">
+      <input type="text" class="sku-input" id="sku-entrada" placeholder="Ex: 42156" inputmode="numeric" onkeydown="if(event.key==='Enter')buscarSku('entrada')">
+      <button class="search-btn" onclick="buscarSku('entrada')">Buscar</button>
+    </div>
+
+    <div class="loading" id="loading-entrada"><span class="spinner"></span>Buscando no estoque...</div>
+
+    <div class="result-card" id="result-entrada">
+      <div class="result-header">
+        <div class="result-top">
+          <span class="result-sku" id="e-sku">—</span>
+          <span class="badge" id="e-badge">Novo</span>
+        </div>
+        <div class="result-name" id="e-nome">—</div>
+      </div>
+      <div class="result-grid">
+        <div class="result-field"><div class="result-field-label">Cor</div><div class="result-field-value" id="e-cor">—</div></div>
+        <div class="result-field"><div class="result-field-label">Tamanho</div><div class="result-field-value" id="e-tam">—</div></div>
+        <div class="result-field"><div class="result-field-label">Gênero</div><div class="result-field-value" id="e-gen">—</div></div>
+        <div class="result-field"><div class="result-field-label">Preço</div><div class="result-field-value" id="e-preco">—</div></div>
+      </div>
+      <div class="result-actions">
+        <div class="warning-box" id="e-warning" style="display:none;"></div>
+        <div class="qty-row">
+          <span class="qty-label">Quantidade</span>
+          <div class="qty-ctrl">
+            <button class="qty-btn" onclick="changeQty('entrada',-1)">−</button>
+            <span class="qty-val" id="e-qty">1</span>
+            <button class="qty-btn" onclick="changeQty('entrada',1)">+</button>
+          </div>
+        </div>
+        <div class="btn-row" id="e-btn-row">
+          <button class="btn-main" id="e-btn-main" onclick="confirmarEntrada()">Adicionar ao estoque</button>
+        </div>
+      </div>
+      <div class="sheet-info">
+        <span class="status-dot" style="width:6px;height:6px;flex-shrink:0;"></span>
+        Conectado ao Google Sheets — PDV BROWO
+      </div>
+    </div>
+  </div>
+
+  <!-- Saida Tab -->
+  <div id="view-saida" style="display:none;">
+    <div class="section" style="margin-top:14px;">
+      <div class="label">Escanear etiqueta</div>
+      <button class="scan-btn" onclick="startScan('saida')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3m0 4h4v-4m-4 0h-3v4"/></svg>
+        <span class="scan-btn-label">Ativar câmera</span>
+        <span class="scan-btn-sub">Aponte para o código de barras da peça vendida</span>
+      </button>
+      <div class="video-container" id="video-saida">
+        <video id="video-el-saida" playsinline></video>
+        <div class="video-overlay"><div class="scan-frame"></div></div>
+        <button class="video-close" onclick="stopScan('saida')">✕</button>
+      </div>
+    </div>
+
+    <div class="divider"><div class="div-line"></div><span class="div-text">ou digite o código</span><div class="div-line"></div></div>
+
+    <div class="input-row">
+      <input type="text" class="sku-input" id="sku-saida" placeholder="Ex: 42156" inputmode="numeric" onkeydown="if(event.key==='Enter')buscarSku('saida')">
+      <button class="search-btn" onclick="buscarSku('saida')">Buscar</button>
+    </div>
+
+    <div class="loading" id="loading-saida"><span class="spinner"></span>Buscando no estoque...</div>
+
+    <div class="result-card" id="result-saida">
+      <div class="result-header">
+        <div class="result-top">
+          <span class="result-sku" id="s-sku">—</span>
+          <span class="badge badge-exists" id="s-stock-badge">— em estoque</span>
+        </div>
+        <div class="result-name" id="s-nome">—</div>
+      </div>
+      <div class="result-grid">
+        <div class="result-field"><div class="result-field-label">Cor</div><div class="result-field-value" id="s-cor">—</div></div>
+        <div class="result-field"><div class="result-field-label">Tamanho</div><div class="result-field-value" id="s-tam">—</div></div>
+        <div class="result-field"><div class="result-field-label">Estoque atual</div><div class="result-field-value" id="s-qty-atual">—</div></div>
+        <div class="result-field"><div class="result-field-label">Preço</div><div class="result-field-value" id="s-preco">—</div></div>
+      </div>
+      <div class="result-actions">
+        <div class="qty-row">
+          <span class="qty-label">Quantidade a retirar</span>
+          <div class="qty-ctrl">
+            <button class="qty-btn" onclick="changeQty('saida',-1)">−</button>
+            <span class="qty-val" id="s-qty">1</span>
+            <button class="qty-btn" onclick="changeQty('saida',1)">+</button>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn-main danger" onclick="confirmarSaida()">Dar baixa no estoque</button>
+        </div>
+      </div>
+      <div class="sheet-info">
+        <span class="status-dot" style="width:6px;height:6px;flex-shrink:0;"></span>
+        Conectado ao Google Sheets — PDV BROWO
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Estado ────────────────────────────────────────────────────────────────────
+let SCRIPT_URL = localStorage.getItem('browo_script_url') || 'https://script.google.com/macros/s/AKfycbyVKrsBpvJjOjuv_ooC4APJfao7mpwTfWOm40BlK1IZM2Tecg1zCXnWMLqcUvmYNi5u/exec';
+let entradaQty = 1, saidaQty = 1;
+let currentProduto = null;
+let isExisting = false;
+let codeReader = null;
+
+// ── Inicialização ─────────────────────────────────────────────────────────────
+window.onload = () => {
+  const input = document.getElementById('script-url-input');
+  if (input) input.value = SCRIPT_URL;
+  verificarConexao();
+};
+
+async function verificarConexao() {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  if (!SCRIPT_URL) {
+    dot.style.background = '#f59e0b';
+    txt.textContent = 'Não configurado';
+    return;
+  }
+  try {
+    const r = await fetch(SCRIPT_URL + '?action=buscar&sku=TESTE_CONEXAO');
+    dot.style.background = '#22c55e';
+    txt.textContent = 'Conectado';
+  } catch {
+    dot.style.background = '#ef4444';
+    txt.textContent = 'Sem conexão';
+  }
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function setTab(tab) {
+  document.getElementById('tab-entrada').classList.toggle('active', tab === 'entrada');
+  document.getElementById('tab-saida').classList.toggle('active', tab === 'saida');
+  document.getElementById('view-entrada').style.display = tab === 'entrada' ? 'block' : 'none';
+  document.getElementById('view-saida').style.display = tab === 'saida' ? 'block' : 'none';
+  document.getElementById('config-screen').classList.remove('show');
+}
+
+// ── Config ────────────────────────────────────────────────────────────────────
+function toggleConfig() {
+  const s = document.getElementById('config-screen');
+  const showing = s.classList.toggle('show');
+  if (showing) {
+    document.getElementById('view-entrada').style.display = 'none';
+    document.getElementById('view-saida').style.display = 'none';
+  } else {
+    setTab('entrada');
+  }
+}
+
+function saveConfig() {
+  const url = document.getElementById('script-url-input').value.trim();
+  if (!url.startsWith('https://script.google.com')) {
+    showToast('URL inválida. Verifique e tente novamente.', true);
+    return;
+  }
+  SCRIPT_URL = url;
+  localStorage.setItem('browo_script_url', url);
+  showToast('Configuração salva!');
+  toggleConfig();
+  verificarConexao();
+}
+
+// ── Scanner de código de barras ───────────────────────────────────────────────
+async function startScan(tab) {
+  const videoContainer = document.getElementById('video-' + tab);
+  const videoEl = document.getElementById('video-el-' + tab);
+  videoContainer.classList.add('show');
+  document.getElementById('scan-btn-' + tab) && (document.getElementById('scan-btn-' + tab).style.display = 'none');
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    videoEl.srcObject = stream;
+    videoEl.play();
+
+    if (window.ZXing) {
+      codeReader = new ZXing.BrowserMultiFormatReader();
+      codeReader.decodeFromVideoElement(videoEl, (result, err) => {
+        if (result) {
+          stopScan(tab);
+          const sku = result.getText();
+          document.getElementById('sku-' + tab).value = sku;
+          buscarSku(tab);
+        }
+      });
+    }
+  } catch (err) {
+    showToast('Câmera não disponível. Use a digitação manual.', true);
+    stopScan(tab);
+  }
+}
+
+function stopScan(tab) {
+  const videoContainer = document.getElementById('video-' + tab);
+  const videoEl = document.getElementById('video-el-' + tab);
+  videoContainer.classList.remove('show');
+  if (document.getElementById('scan-btn-' + tab)) {
+    document.getElementById('scan-btn-' + tab).style.display = '';
+  }
+  if (videoEl.srcObject) {
+    videoEl.srcObject.getTracks().forEach(t => t.stop());
+    videoEl.srcObject = null;
+  }
+  if (codeReader) { try { codeReader.reset(); } catch(e) {} }
+}
+
+// ── Busca de SKU ──────────────────────────────────────────────────────────────
+async function buscarSku(tab) {
+  const sku = document.getElementById('sku-' + tab).value.trim().toUpperCase();
+  if (!sku) return;
+  if (!SCRIPT_URL) { showToast('Configure a URL do Apps Script primeiro.', true); toggleConfig(); return; }
+
+  document.getElementById('loading-' + tab).classList.add('show');
+  document.getElementById('result-' + tab).classList.remove('show');
+
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=buscar&sku=${encodeURIComponent(sku)}`);
+    const data = await res.json();
+    document.getElementById('loading-' + tab).classList.remove('show');
+
+    if (!data.ok) { showToast(data.erro || 'Erro ao buscar.', true); return; }
+
+    if (tab === 'entrada') mostrarResultadoEntrada(sku, data);
+    else mostrarResultadoSaida(sku, data);
+  } catch (err) {
+    document.getElementById('loading-' + tab).classList.remove('show');
+    showToast('Erro de conexão. Verifique a URL do script.', true);
+  }
+}
+
+// ── Entrada ───────────────────────────────────────────────────────────────────
+function mostrarResultadoEntrada(sku, data) {
+  isExisting = data.encontrado;
+  currentProduto = data.encontrado ? data.produtos[0] : null;
+  entradaQty = 1;
+
+  document.getElementById('e-sku').textContent = sku;
+  document.getElementById('e-qty').textContent = 1;
+
+  if (data.encontrado) {
+    const p = data.produtos[0];
+    document.getElementById('e-nome').textContent = p.nome || '—';
+    document.getElementById('e-cor').textContent = p.cor || '—';
+    document.getElementById('e-tam').textContent = p.tamanho || '—';
+    document.getElementById('e-gen').textContent = p.genero || '—';
+    document.getElementById('e-preco').textContent = p.preco || '—';
+    const badge = document.getElementById('e-badge');
+    badge.textContent = 'Já existe';
+    badge.className = 'badge badge-exists';
+    const w = document.getElementById('e-warning');
+    w.style.display = 'block';
+    w.textContent = `SKU já existe com ${p.quantidade || 0} un. em estoque. Deseja incrementar a quantidade?`;
+    document.getElementById('e-btn-main').textContent = `Incrementar (+1)`;
+  } else {
+    document.getElementById('e-nome').textContent = 'Produto novo';
+    document.getElementById('e-cor').textContent = '—';
+    document.getElementById('e-tam').textContent = '—';
+    document.getElementById('e-gen').textContent = '—';
+    document.getElementById('e-preco').textContent = '—';
+    const badge = document.getElementById('e-badge');
+    badge.textContent = 'Novo';
+    badge.className = 'badge badge-new';
+    document.getElementById('e-warning').style.display = 'none';
+    document.getElementById('e-btn-main').textContent = 'Adicionar ao estoque';
+  }
+
+  document.getElementById('result-entrada').classList.add('show');
+}
+
+async function confirmarEntrada() {
+  if (!SCRIPT_URL) return;
+  const sku = document.getElementById('e-sku').textContent;
+
+  const body = isExisting
+    ? { action: 'entrada', sku, quantidade: entradaQty, tamanho: currentProduto?.tamanho || '' }
+    : { action: 'novo', sku, quantidade: entradaQty, nome: 'Produto ' + sku };
+
+  try {
+    const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(body) });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(data.msg || 'Registrado com sucesso!');
+      document.getElementById('result-entrada').classList.remove('show');
+      document.getElementById('sku-entrada').value = '';
+    } else {
+      showToast(data.erro || 'Erro ao salvar.', true);
+    }
+  } catch { showToast('Erro de conexão.', true); }
+}
+
+// ── Saída ─────────────────────────────────────────────────────────────────────
+function mostrarResultadoSaida(sku, data) {
+  saidaQty = 1;
+  document.getElementById('s-sku').textContent = sku;
+  document.getElementById('s-qty').textContent = 1;
+
+  if (!data.encontrado) {
+    showToast('SKU não encontrado no estoque.', true);
+    return;
+  }
+
+  const p = data.produtos[0];
+  document.getElementById('s-nome').textContent = p.nome || '—';
+  document.getElementById('s-cor').textContent = p.cor || '—';
+  document.getElementById('s-tam').textContent = p.tamanho || '—';
+  document.getElementById('s-preco').textContent = p.preco || '—';
+  document.getElementById('s-qty-atual').textContent = (p.quantidade || 0) + ' un.';
+  document.getElementById('s-stock-badge').textContent = (p.quantidade || 0) + ' em estoque';
+  currentProduto = p;
+  document.getElementById('result-saida').classList.add('show');
+}
+
+async function confirmarSaida() {
+  if (!SCRIPT_URL || !currentProduto) return;
+  const sku = document.getElementById('s-sku').textContent;
+  const body = { action: 'saida', sku, quantidade: saidaQty, tamanho: currentProduto.tamanho || '' };
+
+  try {
+    const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(body) });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(data.msg || 'Baixa registrada!');
+      document.getElementById('result-saida').classList.remove('show');
+      document.getElementById('sku-saida').value = '';
+    } else {
+      showToast(data.erro || 'Erro ao salvar.', true);
+    }
+  } catch { showToast('Erro de conexão.', true); }
+}
+
+// ── Utilitários ───────────────────────────────────────────────────────────────
+function changeQty(tab, delta) {
+  if (tab === 'entrada') {
+    entradaQty = Math.max(1, entradaQty + delta);
+    document.getElementById('e-qty').textContent = entradaQty;
+    if (isExisting) document.getElementById('e-btn-main').textContent = `Incrementar (+${entradaQty})`;
+  } else {
+    saidaQty = Math.max(1, saidaQty + delta);
+    document.getElementById('s-qty').textContent = saidaQty;
+  }
+}
+
+let toastTimer;
+function showToast(msg, isError = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isError ? ' error' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>
