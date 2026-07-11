@@ -8,7 +8,6 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>BROWO Estoque</title>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-<script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   :root {
@@ -174,7 +173,7 @@
       <button class="scan-btn" onclick="tirarFotoEtiqueta()" id="scan-btn-entrada">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
         <span class="scan-btn-label">Fotografar etiqueta</span>
-        <span class="scan-btn-sub">Aponte para o adesivo branco da etiqueta Booq</span>
+        <span class="scan-btn-sub">Fotografe a etiqueta — a IA lê automaticamente</span>
       </button>
       <input type="file" id="foto-etiqueta-input" accept="image/*" capture="environment" style="display:none" onchange="processarFotoEtiqueta(event)">
       
@@ -630,42 +629,7 @@ async function processarFotoEtiqueta(event) {
   event.target.value = '';
 }
 
-function extrairDadosBooq(texto) {
-  // Limpa e divide em linhas
-  const linhas = texto.split('\n')
-    .map(l => l.trim())
-    .filter(l => l.length > 0);
-
-  let sku = '', tamanho = '', nome = '', cor = '', genero = '';
-
-  for (let i = 0; i < linhas.length; i++) {
-    const linha = linhas[i];
-
-    // Linha do SKU Booq: "42156   I26   M" ou "42156   M"
-    // SKU é número de 5 dígitos no início
-    const matchSku = linha.match(/^(\d{5})\s+(?:[A-Z]\d+\s+)?([A-Z]{1,3})\b/);
-    if (matchSku && !sku) {
-      sku = matchSku[1];
-      tamanho = matchSku[2];
-      // Próxima linha = nome do produto
-      if (linhas[i+1] && !linhas[i+1].match(/^\d/) && linhas[i+1].length > 5) {
-        nome = linhas[i+1];
-        // Linha seguinte = cor
-        if (linhas[i+2] && linhas[i+2].length < 30 && !linhas[i+2].match(/\d{5}/)) {
-          cor = linhas[i+2];
-          // Linha seguinte pode ter gênero
-          if (linhas[i+3]) {
-            const gMatch = linhas[i+3].match(/^(MASCULINO|FEMININO|UNISSEX)/i);
-            if (gMatch) genero = gMatch[1];
-          }
-        }
-      }
-      break;
-    }
-  }
-
-  return { sku, tamanho, nome, cor, genero, marca: 'Booq' };
-}
+// extrairDadosBooq substituído pela API do Claude
 
 function mostrarResultadoOCR(dados) {
   // Se tem SKU, tenta buscar no Sheets primeiro
