@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>BROWO Estoque</title>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   :root {
@@ -53,12 +54,11 @@
   .scan-btn svg { width: 36px; height: 36px; color: var(--text-muted); }
   .scan-btn-label { font-size: 14px; color: var(--text-secondary); font-weight: 500; }
   .scan-btn-sub { font-size: 12px; color: var(--text-muted); }
-  .video-container { display: none; position: relative; border-radius: var(--radius); overflow: hidden; background: #000; aspect-ratio: 1; }
+  .video-container { display: none; position: relative; border-radius: var(--radius); background: #000; min-height: 300px; }
   .video-container.show { display: block; }
-  .video-container video { width: 100%; height: 100%; object-fit: cover; }
-  .video-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
-  .scan-frame { width: 60%; aspect-ratio: 1; border: 2px solid #fff; border-radius: 8px; opacity: 0.8; }
-  .video-close { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.5); border: none; color: #fff; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; }
+  .video-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 5; }
+  .scan-frame { width: 220px; height: 120px; border: 2px solid #fff; border-radius: 8px; opacity: 0.8; }
+  .video-close { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.6); border: none; color: #fff; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; font-size: 20px; display: flex; align-items: center; justify-content: center; z-index: 10; }
 
   /* Divider */
   .divider { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
@@ -170,11 +170,23 @@
   <div id="view-entrada">
     <div class="section" style="margin-top:14px;">
       <div class="label">Escanear etiqueta</div>
-      <button class="scan-btn" onclick="startScan('entrada')" id="scan-btn-entrada">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3m0 4h4v-4m-4 0h-3v4"/></svg>
-        <span class="scan-btn-label">Ativar câmera</span>
-        <span class="scan-btn-sub">Aponte para o código de barras da etiqueta</span>
+      <!-- Botão de foto para OCR (entrada) -->
+      <button class="scan-btn" onclick="tirarFotoEtiqueta()" id="scan-btn-entrada">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        <span class="scan-btn-label">Fotografar etiqueta</span>
+        <span class="scan-btn-sub">Aponte para o adesivo branco da etiqueta Booq</span>
       </button>
+      <input type="file" id="foto-etiqueta-input" accept="image/*" capture="environment" style="display:none" onchange="processarFotoEtiqueta(event)">
+      
+      <!-- Preview da foto -->
+      <div id="foto-preview" style="display:none; margin-top:10px; border-radius:var(--radius); overflow:hidden;">
+        <img id="foto-img" style="width:100%; border-radius:var(--radius);">
+      </div>
+      
+      <!-- Status do OCR -->
+      <div id="ocr-status" style="display:none; padding:10px 0; font-size:13px; color:var(--text-secondary); text-align:center;">
+        <span class="spinner"></span> <span id="ocr-msg">Lendo etiqueta...</span>
+      </div>
       <div class="video-container" id="video-entrada">
         <div class="video-overlay"><div class="scan-frame"></div></div>
         <button class="video-close" onclick="stopScan('entrada')" style="position:absolute;top:10px;right:10px;z-index:10;">✕</button>
@@ -369,8 +381,8 @@ async function startScan(tab) {
     scanDiv = document.createElement('div');
     scanDiv.id = 'scan-div-' + tab;
     scanDiv.style.width = '100%';
-    scanDiv.style.height = '100%';
-    videoContainer.insertBefore(scanDiv, videoContainer.querySelector('.video-overlay'));
+    scanDiv.style.minHeight = '300px';
+    videoContainer.insertBefore(scanDiv, videoContainer.firstChild);
   }
 
   // Para scanner anterior se existir
@@ -557,6 +569,169 @@ function showToast(msg, isError = false) {
   t.className = 'toast show' + (isError ? ' error' : '');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── OCR para etiqueta Booq ────────────────────────────────────────────────────
+function tirarFotoEtiqueta() {
+  document.getElementById('foto-etiqueta-input').click();
+}
+
+async function processarFotoEtiqueta(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  // Mostra preview da foto
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    document.getElementById('foto-img').src = e.target.result;
+    document.getElementById('foto-preview').style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+
+  // Inicia OCR
+  document.getElementById('ocr-status').style.display = 'block';
+  document.getElementById('ocr-msg').textContent = 'Lendo etiqueta...';
+
+  try {
+    const { data: { text } } = await Tesseract.recognize(file, 'por+eng', {
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          document.getElementById('ocr-msg').textContent = 
+            'Lendo... ' + Math.round(m.progress * 100) + '%';
+        }
+      }
+    });
+
+    document.getElementById('ocr-msg').textContent = 'Analisando dados...';
+    const dados = extrairDadosBooq(text);
+    document.getElementById('ocr-status').style.display = 'none';
+
+    if (dados.sku) {
+      // Preenche o campo SKU e busca no Sheets
+      document.getElementById('sku-entrada').value = dados.sku;
+      mostrarResultadoOCR(dados);
+    } else {
+      showToast('Não consegui ler o SKU. Tente de novo com melhor iluminação.', true);
+      document.getElementById('ocr-status').style.display = 'none';
+    }
+  } catch (err) {
+    document.getElementById('ocr-status').style.display = 'none';
+    showToast('Erro ao ler etiqueta. Tente novamente.', true);
+  }
+
+  // Limpa input para permitir nova foto
+  event.target.value = '';
+}
+
+function extrairDadosBooq(texto) {
+  // Limpa e divide em linhas
+  const linhas = texto.split('\n')
+    .map(l => l.trim())
+    .filter(l => l.length > 0);
+
+  let sku = '', tamanho = '', nome = '', cor = '', genero = '';
+
+  for (let i = 0; i < linhas.length; i++) {
+    const linha = linhas[i];
+
+    // Linha do SKU Booq: "42156   I26   M" ou "42156   M"
+    // SKU é número de 5 dígitos no início
+    const matchSku = linha.match(/^(\d{5})\s+(?:[A-Z]\d+\s+)?([A-Z]{1,3})\b/);
+    if (matchSku && !sku) {
+      sku = matchSku[1];
+      tamanho = matchSku[2];
+      // Próxima linha = nome do produto
+      if (linhas[i+1] && !linhas[i+1].match(/^\d/) && linhas[i+1].length > 5) {
+        nome = linhas[i+1];
+        // Linha seguinte = cor
+        if (linhas[i+2] && linhas[i+2].length < 30 && !linhas[i+2].match(/\d{5}/)) {
+          cor = linhas[i+2];
+          // Linha seguinte pode ter gênero
+          if (linhas[i+3]) {
+            const gMatch = linhas[i+3].match(/^(MASCULINO|FEMININO|UNISSEX)/i);
+            if (gMatch) genero = gMatch[1];
+          }
+        }
+      }
+      break;
+    }
+  }
+
+  return { sku, tamanho, nome, cor, genero, marca: 'Booq' };
+}
+
+function mostrarResultadoOCR(dados) {
+  // Se tem SKU, tenta buscar no Sheets primeiro
+  // Se não encontrar, mostra formulário de cadastro com dados pré-preenchidos
+  isExisting = false;
+  currentProduto = dados;
+
+  document.getElementById('e-sku').textContent = dados.sku || '—';
+  document.getElementById('e-nome').textContent = dados.nome || 'Produto novo';
+  document.getElementById('e-cor').textContent = dados.cor || '—';
+  document.getElementById('e-tam').textContent = dados.tamanho || '—';
+  document.getElementById('e-gen').textContent = dados.genero || '—';
+  document.getElementById('e-preco').textContent = '—';
+
+  const badge = document.getElementById('e-badge');
+  badge.textContent = 'Lido da etiqueta';
+  badge.className = 'badge badge-new';
+  document.getElementById('e-warning').style.display = 'none';
+  document.getElementById('e-btn-main').textContent = 'Confirmar e adicionar ao estoque';
+
+  document.getElementById('result-entrada').classList.add('show');
+
+  // Busca no Sheets para ver se já existe
+  if (SCRIPT_URL && dados.sku) {
+    fetch(`${SCRIPT_URL}?action=buscar&sku=${dados.sku}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok && data.encontrado) {
+          isExisting = true;
+          const p = data.produtos[0];
+          const badge = document.getElementById('e-badge');
+          badge.textContent = 'Já existe';
+          badge.className = 'badge badge-exists';
+          const w = document.getElementById('e-warning');
+          w.style.display = 'block';
+          w.textContent = `SKU já existe com ${p.quantidade || 0} un. Deseja incrementar?`;
+          document.getElementById('e-btn-main').textContent = 'Incrementar (+1)';
+        }
+      }).catch(() => {});
+  }
+}
+
+// Sobrescreve confirmarEntrada para incluir dados do OCR
+const _confirmarEntradaOriginal = confirmarEntrada;
+confirmarEntrada = async function() {
+  if (!SCRIPT_URL) return;
+  const sku = document.getElementById('e-sku').textContent;
+
+  const body = isExisting
+    ? { action: 'entrada', sku, quantidade: entradaQty, tamanho: currentProduto?.tamanho || '' }
+    : {
+        action: 'novo',
+        sku,
+        quantidade: entradaQty,
+        nome: currentProduto?.nome || '',
+        cor: currentProduto?.cor || '',
+        tamanho: currentProduto?.tamanho || '',
+        genero: currentProduto?.genero || '',
+        marca: currentProduto?.marca || 'Booq',
+      };
+
+  try {
+    const res = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(body) });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(data.msg || 'Registrado com sucesso!');
+      document.getElementById('result-entrada').classList.remove('show');
+      document.getElementById('foto-preview').style.display = 'none';
+      document.getElementById('sku-entrada').value = '';
+    } else {
+      showToast(data.erro || 'Erro ao salvar.', true);
+    }
+  } catch { showToast('Erro de conexão.', true); }
 }
 </script>
 </body>
